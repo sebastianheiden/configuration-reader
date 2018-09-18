@@ -24,6 +24,7 @@ public class ConfigurationReader {
 		addClassMapper(String.class, str -> str);
 		addClassMapper(Integer.class, str -> Integer.parseInt(str));
 		addClassMapper(Long.class, str -> Long.parseLong(str));
+		addClassMapper(Float.class, str -> Float.parseFloat(str));
 		addClassMapper(Double.class, str -> Double.parseDouble(str));
 		addClassMapper(Boolean.class, str -> Boolean.valueOf(str));
 
@@ -31,6 +32,7 @@ public class ConfigurationReader {
 		addClassMapper(String[].class, str -> str.split(","));
 		addClassMapper(Integer[].class, str -> Arrays.asList(str.split(",")).stream().map(s -> CLASS_MAPPERS.get(Integer.class).apply(s)).toArray(Integer[]::new));
 		addClassMapper(Long[].class, str -> Arrays.asList(str.split(",")).stream().map(s -> CLASS_MAPPERS.get(Long.class).apply(s)).toArray(Long[]::new));
+		addClassMapper(Float[].class, str -> Arrays.asList(str.split(",")).stream().map(s -> CLASS_MAPPERS.get(Float.class).apply(s)).toArray(Float[]::new));
 		addClassMapper(Double[].class, str -> Arrays.asList(str.split(",")).stream().map(s -> CLASS_MAPPERS.get(Double.class).apply(s)).toArray(Double[]::new));
 		addClassMapper(Boolean[].class, str -> Arrays.asList(str.split(",")).stream().map(s -> CLASS_MAPPERS.get(Boolean.class).apply(s)).toArray(Boolean[]::new));
 	}
@@ -55,7 +57,7 @@ public class ConfigurationReader {
 
 			Class<?> type = field.getType();
 			if (!CLASS_MAPPERS.containsKey(type)) throw new IllegalArgumentException("Field " + field.getName() + " in class " + configClass + " has an unsupported type. Supported Types are: "
-					+ CLASS_MAPPERS.keySet().stream().map(c -> c.getSimpleName()).collect(Collectors.toList()));
+					+ CLASS_MAPPERS.keySet().stream().map(c -> c.getSimpleName()).sorted().collect(Collectors.toList()));
 
 			String propertyName = getPropertyName(field);
 			String property = properties.getProperty(propertyName);
