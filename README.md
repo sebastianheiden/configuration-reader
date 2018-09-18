@@ -33,5 +33,5 @@ Custom class mappers can be passed via `addClassMapper`.
 
 `configurationReader.addClassMapper(BigDecimal.class, str -> new BigDecimal(str));`
 
-## TODOs:
+## TODOs
 - Validation of input values (min, max, pattern, optional, ...)
