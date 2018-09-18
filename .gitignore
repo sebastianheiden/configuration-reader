@@ -1,5 +1,4 @@
 bin/
-/.gradle/
 .project
 .settings/
 .classpath
