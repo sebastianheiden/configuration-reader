@@ -13,7 +13,6 @@ Each field in your class will be filled with the regarding property.
 - Name mappings: No need to change the names of properies or fields. Map names with `@PropertyName`
 - Default values: initialize the fields of your class, which will behave as your default values
 - throws Exception if no value in properties file and no default value is provided 
-- TODO: Validation of input values (min, max, pattern, optional, ...)
 
 ## Class Mappings
 
@@ -33,3 +32,6 @@ Build in class mappers:
 Custom class mappers can be passed via `addClassMapper`.
 
 `configurationReader.addClassMapper(BigDecimal.class, str -> new BigDecimal(str));`
+
+## TODOs:
+- Validation of input values (min, max, pattern, optional, ...)
