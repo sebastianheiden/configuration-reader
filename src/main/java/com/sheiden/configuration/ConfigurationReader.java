@@ -18,6 +18,11 @@ public class ConfigurationReader {
 
 	private final Map<Class<?>, Function<String, ?>> CLASS_MAPPERS = new HashMap<>();
 
+	/**
+	 * Instance for singleton usage
+	 */
+	private static ConfigurationReader instance = null;
+
 	public ConfigurationReader() {
 
 		// single classes
@@ -37,6 +42,26 @@ public class ConfigurationReader {
 		addClassMapper(Boolean[].class, str -> Arrays.asList(str.split(",")).stream().map(s -> CLASS_MAPPERS.get(Boolean.class).apply(s)).toArray(Boolean[]::new));
 	}
 
+	/**
+	 * Method to get the singleton instance
+	 * 
+	 * @return the singleton instance
+	 */
+	public static ConfigurationReader getInstance() {
+		if (instance == null) {
+			instance = new ConfigurationReader();
+		}
+		return instance;
+	}
+
+	/**
+	 * Adds a new (custom) class mapping function
+	 * 
+	 * @param type
+	 *            the class that should be mapped
+	 * @param func
+	 *            the function, that converts a String to M
+	 */
 	public <M> void addClassMapper(Class<M> type, Function<String, M> func) {
 		CLASS_MAPPERS.put(type, func);
 	}
@@ -56,8 +81,11 @@ public class ConfigurationReader {
 		for (Field field : configClass.getDeclaredFields()) {
 
 			Class<?> type = field.getType();
-			if (!CLASS_MAPPERS.containsKey(type)) throw new IllegalArgumentException("Field " + field.getName() + " in class " + configClass + " has an unsupported type. Supported Types are: "
-					+ CLASS_MAPPERS.keySet().stream().map(c -> c.getSimpleName()).sorted().collect(Collectors.toList()));
+			if (!CLASS_MAPPERS.containsKey(type)) throw new IllegalArgumentException( //
+					String.format("Field %s in class %s has an unsupported type. Supported Types are: %s", //
+							field.getName(), //
+							configClass.getSimpleName(), //
+							CLASS_MAPPERS.keySet().stream().map(c -> c.getSimpleName()).sorted().collect(Collectors.toList())));
 
 			String propertyName = getPropertyName(field);
 			String property = properties.getProperty(propertyName);
@@ -102,8 +130,8 @@ public class ConfigurationReader {
 		return name;
 	}
 
-	private boolean isEmpty(String name) {
-		return name == null || name.isEmpty();
+	private boolean isEmpty(String string) {
+		return string == null || string.isEmpty();
 	}
 
 	private <M> M getInstance(Class<M> clazz) {
