@@ -7,7 +7,7 @@ import java.math.BigDecimal;
 
 import org.junit.Test;
 
-import com.sheiden.configuraion.test.classes.AdvancedConfiguration;
+import com.sheiden.configuraion.test.classes.AdvancedSubConfiguration;
 import com.sheiden.configuraion.test.classes.SimpleConfiguration;
 import com.sheiden.configuration.ConfigurationReader;
 
@@ -39,7 +39,7 @@ public class ConfigurationReaderTest {
 	}
 
 	/**
-	 * Tests advanced mechanics like name mapping, additional class mappings, default values, etc
+	 * Tests advanced mechanics like name mapping, additional class mappings, default values, name spaces, inheritance
 	 */
 	@Test
 	public void advancedConfigReadTest() {
@@ -47,31 +47,43 @@ public class ConfigurationReaderTest {
 		ConfigurationReader configurationReader = new ConfigurationReader();
 		configurationReader.addClassMapper(BigDecimal.class, str -> new BigDecimal(str));
 
-		AdvancedConfiguration instance = configurationReader.read(PROPERTIES_BASE_DIR + "advanced.properties", AdvancedConfiguration.class);
+		AdvancedSubConfiguration instance = configurationReader.read(PROPERTIES_BASE_DIR + "advanced.properties", AdvancedSubConfiguration.class);
 
-		// tests naming per @PropertyName
-		assertEquals("abc", instance.a);
+		// tests inherited property with name space
+		assertEquals("qwertz", instance.a);
+
+		// tests naming per @ConfigurationProperty
+		assertEquals("abc", instance.b);
 
 		// tests additional class mapping -> BigDecimal
 		assertEquals(new BigDecimal("1.23"), instance.dec);
 
 		// tests default value
-		assertEquals("xyz", instance.b);
+		assertEquals("xyz", instance.c);
 	}
 
+	/**
+	 * Tests a missing class mapping for BigDecimal
+	 */
 	@Test(expected = IllegalArgumentException.class)
 	public void testMissingClassMapper() {
-		new ConfigurationReader().read(PROPERTIES_BASE_DIR + "advanced.properties", AdvancedConfiguration.class);
+		new ConfigurationReader().read(PROPERTIES_BASE_DIR + "advanced.properties", AdvancedSubConfiguration.class);
 	}
 
+	/**
+	 * Tests that the given file path is not a file
+	 */
 	@Test(expected = IllegalStateException.class)
 	public void testFileIsDirectory() {
-		new ConfigurationReader().read(PROPERTIES_BASE_DIR, AdvancedConfiguration.class);
+		new ConfigurationReader().read(PROPERTIES_BASE_DIR, AdvancedSubConfiguration.class);
 	}
 
+	/**
+	 * Tests that the given file path does not exist
+	 */
 	@Test(expected = IllegalStateException.class)
 	public void testFileIsMissing() {
-		new ConfigurationReader().read(PROPERTIES_BASE_DIR + "does-not-exist", AdvancedConfiguration.class);
+		new ConfigurationReader().read(PROPERTIES_BASE_DIR + "does-not-exist", AdvancedSubConfiguration.class);
 	}
 
 }

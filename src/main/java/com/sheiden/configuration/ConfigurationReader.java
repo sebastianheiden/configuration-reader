@@ -12,7 +12,8 @@ import java.util.Properties;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-import com.sheiden.configuration.annotation.PropertyName;
+import com.sheiden.configuration.annotation.ConfigurationProperty;
+import com.sheiden.configuration.annotation.NameSpace;
 
 public class ConfigurationReader {
 
@@ -78,6 +79,8 @@ public class ConfigurationReader {
 			return instance;
 		}
 
+		String nameSpace = getNameSpace(configClass);
+
 		for (Field field : configClass.getDeclaredFields()) {
 
 			Class<?> type = field.getType();
@@ -87,7 +90,7 @@ public class ConfigurationReader {
 							configClass.getSimpleName(), //
 							CLASS_MAPPERS.keySet().stream().map(c -> c.getSimpleName()).sorted().collect(Collectors.toList())));
 
-			String propertyName = getPropertyName(field);
+			String propertyName = getPropertyName(nameSpace, field);
 			String property = properties.getProperty(propertyName);
 
 			try {
@@ -119,15 +122,36 @@ public class ConfigurationReader {
 		return instance;
 	}
 
-	private String getPropertyName(Field field) {
+	private String getNameSpace(Class<?> x) {
 
-		PropertyName propertyName = field.getAnnotation(PropertyName.class);
-		if (propertyName == null) return field.getName();
+		String prefix = "";
+
+		Class<?> superclass = x.getSuperclass();
+		if (!superclass.equals(Object.class)) {
+			prefix += getNameSpace(superclass);
+		}
+
+		NameSpace annotation = x.getAnnotation(NameSpace.class);
+		if (annotation == null) return prefix;
+
+		prefix += annotation.value();
+
+		if (!prefix.endsWith(".")) {
+			prefix += ".";
+		}
+
+		return prefix;
+	}
+
+	private String getPropertyName(String prefix, Field field) {
+
+		ConfigurationProperty propertyName = field.getAnnotation(ConfigurationProperty.class);
+		if (propertyName == null) return prefix + field.getName();
 
 		String name = propertyName.value();
-		if (isEmpty(name)) return field.getName();
+		if (isEmpty(name)) return prefix + field.getName();
 
-		return name;
+		return prefix + name;
 	}
 
 	private boolean isEmpty(String string) {

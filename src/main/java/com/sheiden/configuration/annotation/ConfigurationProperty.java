@@ -6,20 +6,21 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Defines the name of the property, that should be mapped to the annotated field.
+ * Specifies additional parameters of a configuration field.
  * 
- * @author sebastianheiden
+ * @author Sebastian Heiden
  */
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.FIELD)
-
-// TODO: rename to ConfigurationProperty with methods name, min, max, pattern, etc...
-
-public @interface PropertyName {
+public @interface ConfigurationProperty {
 
 	/**
+	 * Defines the name of the property, that should be mapped to the annotated field.
+	 * 
 	 * @return the lookup property name of the field
 	 */
 	String value();
+
+	// TODO: methods min, max, pattern, etc...
 
 }
