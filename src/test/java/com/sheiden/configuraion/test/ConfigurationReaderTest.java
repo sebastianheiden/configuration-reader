@@ -21,7 +21,7 @@ public class ConfigurationReaderTest {
 	@Test
 	public void simpleConfigReadTest() {
 
-		SimpleConfiguration instance = new ConfigurationReader().read(PROPERTIES_BASE_DIR + "simple.properties", SimpleConfiguration.class);
+		SimpleConfiguration instance = ConfigurationReader.getInstance().read(PROPERTIES_BASE_DIR + "simple.properties", SimpleConfiguration.class);
 
 		assertEquals("abc", instance._string);
 		assertEquals(new Integer(1), instance._int);
@@ -39,12 +39,13 @@ public class ConfigurationReaderTest {
 	}
 
 	/**
-	 * Tests advanced mechanics like name mapping, additional class mappings, default values, name spaces, inheritance
+	 * Tests advanced mechanics like name mapping, additional class mappings, default values, name
+	 * spaces, inheritance
 	 */
 	@Test
 	public void advancedConfigReadTest() {
 
-		ConfigurationReader configurationReader = new ConfigurationReader();
+		ConfigurationReader configurationReader = ConfigurationReader.getInstance();
 		configurationReader.addClassMapper(BigDecimal.class, str -> new BigDecimal(str));
 
 		AdvancedSubConfiguration instance = configurationReader.read(PROPERTIES_BASE_DIR + "advanced.properties", AdvancedSubConfiguration.class);
@@ -75,7 +76,7 @@ public class ConfigurationReaderTest {
 	 */
 	@Test(expected = IllegalStateException.class)
 	public void testFileIsDirectory() {
-		new ConfigurationReader().read(PROPERTIES_BASE_DIR, AdvancedSubConfiguration.class);
+		ConfigurationReader.getInstance().read(PROPERTIES_BASE_DIR, AdvancedSubConfiguration.class);
 	}
 
 	/**
@@ -83,7 +84,7 @@ public class ConfigurationReaderTest {
 	 */
 	@Test(expected = IllegalStateException.class)
 	public void testFileIsMissing() {
-		new ConfigurationReader().read(PROPERTIES_BASE_DIR + "does-not-exist", AdvancedSubConfiguration.class);
+		ConfigurationReader.getInstance().read(PROPERTIES_BASE_DIR + "does-not-exist", AdvancedSubConfiguration.class);
 	}
 
 }

@@ -5,6 +5,8 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
+import com.sheiden.configuration.ConfigurationReader;
+
 /**
  * Specifies additional parameters of a configuration field.
  * 
@@ -20,6 +22,16 @@ public @interface ConfigurationProperty {
 	 * @return the lookup property name of the field
 	 */
 	String value();
+
+	/**
+	 * Defines if the property is required. <br/>
+	 * If the annotated property is required, but no value is provided, an IllegalArgumentException is
+	 * thrown during {@link ConfigurationReader#read(java.util.Properties, Class)
+	 * ConfigurationReader.read()}.
+	 * 
+	 * @return the requirement of the annotated field
+	 */
+	boolean required() default true;
 
 	// TODO: methods min, max, pattern, etc...
 

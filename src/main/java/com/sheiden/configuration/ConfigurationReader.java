@@ -13,8 +13,12 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import com.sheiden.configuration.annotation.ConfigurationProperty;
-import com.sheiden.configuration.annotation.NameSpace;
 
+/**
+ * This class reads property files and maps each property to a field of a given class.
+ * 
+ * @author Sebastian Heiden
+ */
 public class ConfigurationReader {
 
 	private final Map<Class<?>, Function<String, ?>> CLASS_MAPPERS = new HashMap<>();
@@ -24,6 +28,11 @@ public class ConfigurationReader {
 	 */
 	private static ConfigurationReader instance = null;
 
+	/**
+	 * Default Constructor. For a global instance use {@link #getInstance()} instead.<br/>
+	 * This constructor should not been used, if custom class mappings are used to avoid registering the
+	 * same mapping at all usages of ConfigurationReader.
+	 */
 	public ConfigurationReader() {
 
 		// single classes
@@ -41,10 +50,11 @@ public class ConfigurationReader {
 		addClassMapper(Float[].class, str -> Arrays.asList(str.split(",")).stream().map(s -> CLASS_MAPPERS.get(Float.class).apply(s)).toArray(Float[]::new));
 		addClassMapper(Double[].class, str -> Arrays.asList(str.split(",")).stream().map(s -> CLASS_MAPPERS.get(Double.class).apply(s)).toArray(Double[]::new));
 		addClassMapper(Boolean[].class, str -> Arrays.asList(str.split(",")).stream().map(s -> CLASS_MAPPERS.get(Boolean.class).apply(s)).toArray(Boolean[]::new));
+
 	}
 
 	/**
-	 * Method to get the singleton instance
+	 * Method to get the singleton instance.
 	 * 
 	 * @return the singleton instance
 	 */
@@ -56,21 +66,44 @@ public class ConfigurationReader {
 	}
 
 	/**
-	 * Adds a new (custom) class mapping function
+	 * Adds a new (custom) class mapping function.
 	 * 
-	 * @param type
-	 *            the class that should be mapped
-	 * @param func
-	 *            the function, that converts a String to M
+	 * @param type the class that should be mapped
+	 * @param func the function, that converts a String to M
 	 */
 	public <M> void addClassMapper(Class<M> type, Function<String, M> func) {
 		CLASS_MAPPERS.put(type, func);
 	}
 
+	/**
+	 * Tries to map each field of given <tt>configClass</tt> to a property from the properties file,
+	 * located at <tt>pathToPropertiesFile</tt>.
+	 * 
+	 * @param                      <M> the type of the configuration class
+	 * @param pathToPropertiesFile the path to a properties file on the file system
+	 * @param configClass          the class object of the desired configuration object
+	 * @return a new instance with the inserted fields of the provided class M
+	 * @throws IllegalArgumentException If any required property is not set
+	 * @throws IllegalStateException    If any field of the given class has an unsupported type
+	 * 
+	 * @see #read(Properties, Class)
+	 */
 	public <M> M read(String pathToPropertiesFile, Class<M> configClass) {
 		return read(getProperties(pathToPropertiesFile), configClass);
 	}
 
+	/**
+	 * Tries to map each field of given <tt>configClass</tt> to a property from <tt>properties</tt>.
+	 * 
+	 * @param             <M> the type of the configuration class
+	 * @param properties  contains the properties, that are mapped to configClass
+	 * @param configClass the class object of the desired configuration object
+	 * @return a new instance with the inserted fields of the provided class M
+	 * @throws IllegalArgumentException If any required property is not set
+	 * @throws IllegalStateException    If any field of the given class has an unsupported type
+	 * 
+	 * @see #read(String, Class)
+	 */
 	public <M> M read(Properties properties, Class<M> configClass) {
 
 		M instance = getInstance(configClass);
@@ -79,18 +112,20 @@ public class ConfigurationReader {
 			return instance;
 		}
 
-		String nameSpace = getNameSpace(configClass);
-
-		for (Field field : configClass.getDeclaredFields()) {
+		for (Field field : configClass.getFields()) {
 
 			Class<?> type = field.getType();
-			if (!CLASS_MAPPERS.containsKey(type)) throw new IllegalArgumentException( //
-					String.format("Field %s in class %s has an unsupported type. Supported Types are: %s", //
-							field.getName(), //
-							configClass.getSimpleName(), //
-							CLASS_MAPPERS.keySet().stream().map(c -> c.getSimpleName()).sorted().collect(Collectors.toList())));
+			boolean required = isRequired(field);
 
-			String propertyName = getPropertyName(nameSpace, field);
+			if (!CLASS_MAPPERS.containsKey(type))
+				throw new IllegalArgumentException( //
+						String.format("Field %s in class %s has an unsupported type %s. Supported Types are: %s", //
+								field.getName(), //
+								configClass.getSimpleName(), //
+								type.getSimpleName(), //
+								CLASS_MAPPERS.keySet().stream().map(c -> c.getSimpleName()).sorted().collect(Collectors.toList())));
+
+			String propertyName = ConfigurationUtil.getPropertyName(field);
 			String property = properties.getProperty(propertyName);
 
 			try {
@@ -99,9 +134,10 @@ public class ConfigurationReader {
 					field.setAccessible(true);
 				}
 
-				if (isEmpty(property)) {
+				if (property == null) {
 					Object value = field.get(instance);
-					if (value == null) throw new IllegalArgumentException("Property " + propertyName + " for class " + configClass + " is not set!");
+					if (required && value == null)
+						throw new IllegalArgumentException("Property " + propertyName + " for class " + configClass + " is not set!");
 				} else {
 
 					try {
@@ -122,40 +158,14 @@ public class ConfigurationReader {
 		return instance;
 	}
 
-	private String getNameSpace(Class<?> x) {
+	private boolean isRequired(Field field) {
 
-		String prefix = "";
+		ConfigurationProperty annotation = field.getAnnotation(ConfigurationProperty.class);
+		if (annotation == null)
+			return true;
 
-		Class<?> superclass = x.getSuperclass();
-		if (!superclass.equals(Object.class)) {
-			prefix += getNameSpace(superclass);
-		}
+		return annotation.required();
 
-		NameSpace annotation = x.getAnnotation(NameSpace.class);
-		if (annotation == null) return prefix;
-
-		prefix += annotation.value();
-
-		if (!prefix.endsWith(".")) {
-			prefix += ".";
-		}
-
-		return prefix;
-	}
-
-	private String getPropertyName(String prefix, Field field) {
-
-		ConfigurationProperty propertyName = field.getAnnotation(ConfigurationProperty.class);
-		if (propertyName == null) return prefix + field.getName();
-
-		String name = propertyName.value();
-		if (isEmpty(name)) return prefix + field.getName();
-
-		return prefix + name;
-	}
-
-	private boolean isEmpty(String string) {
-		return string == null || string.isEmpty();
 	}
 
 	private <M> M getInstance(Class<M> clazz) {
@@ -169,6 +179,13 @@ public class ConfigurationReader {
 		}
 	}
 
+	/**
+	 * Reads the properties from the file, located at <tt>pathToPropertiesFile</tt>.
+	 * 
+	 * @param pathToPropertiesFile the path to a properties file
+	 * @return a new properties object
+	 * @throws IllegalStateException If the given path does not points to a valid, readable file
+	 */
 	public Properties getProperties(String pathToPropertiesFile) {
 
 		pathToPropertiesFile = pathToPropertiesFile.replaceFirst("^~", System.getProperty("user.home"));
@@ -184,8 +201,10 @@ public class ConfigurationReader {
 
 		// Checks if file exists
 		if (!configFile.isFile()) {
-			if (configFile.isDirectory()) throw new IllegalStateException("Properties file is a directory");
-			else throw new IllegalStateException("Properties file does not exist");
+			if (configFile.isDirectory())
+				throw new IllegalStateException("Properties file is a directory");
+			else
+				throw new IllegalStateException("Properties file does not exist");
 		}
 
 		// Reads the properties from the file
