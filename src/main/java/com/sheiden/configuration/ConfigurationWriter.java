@@ -3,8 +3,11 @@ package com.sheiden.configuration;
 import java.lang.reflect.Field;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Properties;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -34,6 +37,14 @@ public class ConfigurationWriter {
 	 */
 	public ConfigurationWriter() {
 
+		// simple classes
+		addClassMapper(String.class, str -> str);
+		addClassMapper(Integer.class, i -> i.toString());
+		addClassMapper(Long.class, l -> l.toString());
+		addClassMapper(Float.class, f -> f.toString());
+		addClassMapper(Double.class, d -> d.toString());
+		addClassMapper(Boolean.class, b -> b.toString());
+
 		// reverse arrays
 		addClassMapper(String[].class, arr -> Arrays.asList(arr).stream().collect(Collectors.joining(",")));
 		addClassMapper(Integer[].class, arr -> Arrays.asList(arr).stream().map(x -> x.toString()).collect(Collectors.joining(",")));
@@ -41,6 +52,21 @@ public class ConfigurationWriter {
 		addClassMapper(Float[].class, arr -> Arrays.asList(arr).stream().map(x -> x.toString()).collect(Collectors.joining(",")));
 		addClassMapper(Double[].class, arr -> Arrays.asList(arr).stream().map(x -> x.toString()).collect(Collectors.joining(",")));
 		addClassMapper(Boolean[].class, arr -> Arrays.asList(arr).stream().map(x -> x.toString()).collect(Collectors.joining(",")));
+
+		// collections
+		addClassMapper(List.class, list -> {
+
+			@SuppressWarnings("unchecked")
+			String result = (String) list.stream().map(x -> x.toString()).collect(Collectors.joining(","));
+			return result;
+		});
+
+		addClassMapper(Set.class, set -> {
+
+			@SuppressWarnings("unchecked")
+			String result = (String) set.stream().map(x -> x.toString()).collect(Collectors.joining(","));
+			return result;
+		});
 	}
 
 	/**
@@ -90,22 +116,73 @@ public class ConfigurationWriter {
 
 				String name = ConfigurationUtil.getPropertyName(field);
 
-				String propertyValue = value.toString();
+				Class<?> type = field.getType();
 
-				if (CLASS_MAPPERS.containsKey(field.getType())) {
+				if (CLASS_MAPPERS.containsKey(type)) {
+					properties.setProperty(name, apply(value, type));
 
-					@SuppressWarnings("unchecked")
-					Function<Object, String> function = (Function<Object, String>) CLASS_MAPPERS.get(field.getType());
-					propertyValue = function.apply(value);
+				} else if (type.equals(Map.class)) {
+					handleMap(properties, name, value, clazz);
+
+				} else {
+					properties.setProperty(name, value.toString());
 				}
-
-				properties.setProperty(name, propertyValue);
 
 			} catch (IllegalArgumentException | IllegalAccessException e) {
 				System.out.println("Can not write properties: " + e.getMessage());
 				e.printStackTrace();
 			}
 		}
+	}
+
+	private void handleMap(Properties properties, String name, Object value, Class<?> clazz) throws IllegalAccessException {
+
+		@SuppressWarnings("unchecked")
+		Map<Object, Object> map = (Map<Object, Object>) value;
+		for (Entry<Object, Object> entry : map.entrySet()) {
+
+			Object entryKey = entry.getKey();
+			Object entryValue = entry.getValue();
+
+			if (!CLASS_MAPPERS.containsKey(entryKey.getClass()))
+				throw new IllegalArgumentException("Key of map " + name + " in class " + clazz + " has unsupported type " + entryKey.getClass());
+
+			String key = apply(entryKey, entryKey.getClass());
+
+			if (CLASS_MAPPERS.containsKey(entryValue.getClass())) {
+
+				String stringValue = apply(entryValue, entryValue.getClass());
+				properties.setProperty(name + "." + key, stringValue);
+			} else {
+
+				// assume a complex object, if no class mapping is present
+				for (Entry<String, String> subEntry : mapComplexObject(entryValue).entrySet()) {
+					properties.setProperty(name + "." + key + "." + subEntry.getKey(), subEntry.getValue());
+				}
+			}
+		}
+	}
+
+	private Map<String, String> mapComplexObject(Object object) throws IllegalAccessException {
+
+		Map<String, String> map = new HashMap<>();
+
+		for (Field field : object.getClass().getFields()) {
+
+			String name = ConfigurationUtil.getPropertyName(field);
+			Object value = field.get(object);
+			Class<?> type = field.getType();
+
+			map.put(name, CLASS_MAPPERS.containsKey(type) ? apply(value, type) : value.toString());
+		}
+
+		return map;
+	}
+
+	private String apply(Object object, Class<?> type) {
+		@SuppressWarnings("unchecked")
+		Function<Object, String> function = (Function<Object, String>) CLASS_MAPPERS.get(type);
+		return function.apply(object);
 	}
 
 }

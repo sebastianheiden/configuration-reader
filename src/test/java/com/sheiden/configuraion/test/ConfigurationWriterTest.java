@@ -5,11 +5,17 @@ import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 
 import java.math.BigDecimal;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
 import java.util.Properties;
 
 import org.junit.Test;
 
 import com.sheiden.configuraion.test.classes.AdvancedSubConfiguration;
+import com.sheiden.configuraion.test.classes.CollectionConfiguration;
+import com.sheiden.configuraion.test.classes.MapSubConfiguration;
 import com.sheiden.configuraion.test.classes.SimpleConfiguration;
 import com.sheiden.configuration.ConfigurationReader;
 import com.sheiden.configuration.ConfigurationWriter;
@@ -75,6 +81,35 @@ public class ConfigurationWriterTest {
 		assertEquals(subConfig.b, subConfig2.b);
 		assertEquals(subConfig.c, subConfig2.c);
 		assertEquals(subConfig.dec, subConfig2.dec);
+
+	}
+
+	@Test
+	public void testCollections() {
+
+		CollectionConfiguration collections = new CollectionConfiguration();
+		collections.list = Arrays.asList("abc", "def", "ghi", "ghi");
+		collections.set = new HashSet<>(Arrays.asList(1, 2, 3, 4));
+
+		Map<String, MapSubConfiguration> map = new HashMap<>();
+		map.put("a", new MapSubConfiguration("a", "b"));
+		collections.map = map;
+
+		Map<Integer, Float> simpleMap = new HashMap<>();
+		simpleMap.put(1, 1F);
+		collections.simpleMap = simpleMap;
+
+		Properties properties = new Properties();
+		ConfigurationWriter.getInstance().write(properties, collections);
+
+		System.out.println(properties);
+
+		CollectionConfiguration collections2 = ConfigurationReader.getInstance().read(properties, CollectionConfiguration.class);
+
+		assertEquals(collections.list, collections2.list);
+		assertEquals(collections.set, collections2.set);
+		assertEquals(collections.map, collections2.map);
+		assertEquals(collections.simpleMap, collections2.simpleMap);
 
 	}
 

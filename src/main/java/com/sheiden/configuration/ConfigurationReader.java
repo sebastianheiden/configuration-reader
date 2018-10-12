@@ -5,12 +5,21 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Type;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Properties;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import com.sheiden.configuration.annotation.ConfigurationProperty;
 
@@ -21,7 +30,7 @@ import com.sheiden.configuration.annotation.ConfigurationProperty;
  */
 public class ConfigurationReader {
 
-	private final Map<Class<?>, Function<String, ?>> CLASS_MAPPERS = new HashMap<>();
+	private final Map<Type, Function<String, ?>> CLASS_MAPPERS = new HashMap<>();
 
 	/**
 	 * Instance for singleton usage
@@ -50,7 +59,6 @@ public class ConfigurationReader {
 		addClassMapper(Float[].class, str -> Arrays.asList(str.split(",")).stream().map(s -> CLASS_MAPPERS.get(Float.class).apply(s)).toArray(Float[]::new));
 		addClassMapper(Double[].class, str -> Arrays.asList(str.split(",")).stream().map(s -> CLASS_MAPPERS.get(Double.class).apply(s)).toArray(Double[]::new));
 		addClassMapper(Boolean[].class, str -> Arrays.asList(str.split(",")).stream().map(s -> CLASS_MAPPERS.get(Boolean.class).apply(s)).toArray(Boolean[]::new));
-
 	}
 
 	/**
@@ -114,25 +122,27 @@ public class ConfigurationReader {
 
 		for (Field field : configClass.getFields()) {
 
+			checkField(field);
+
 			Class<?> type = field.getType();
 			boolean required = isRequired(field);
 
-			if (!CLASS_MAPPERS.containsKey(type))
-				throw new IllegalArgumentException( //
-						String.format("Field %s in class %s has an unsupported type %s. Supported Types are: %s", //
-								field.getName(), //
-								configClass.getSimpleName(), //
-								type.getSimpleName(), //
-								CLASS_MAPPERS.keySet().stream().map(c -> c.getSimpleName()).sorted().collect(Collectors.toList())));
-
-			String propertyName = ConfigurationUtil.getPropertyName(field);
-			String property = properties.getProperty(propertyName);
-
 			try {
 
-				if (!field.isAccessible()) {
-					field.setAccessible(true);
+				// check collection classes
+				if (type.equals(Map.class)) {
+					handleMap(field, instance, properties);
+					continue;
+				} else if (type.equals(List.class)) {
+					handleList(field, instance, properties);
+					continue;
+				} else if (type.equals(Set.class)) {
+					handleSet(field, instance, properties);
+					continue;
 				}
+
+				String propertyName = ConfigurationUtil.getPropertyName(field);
+				String property = properties.getProperty(propertyName);
 
 				if (property == null) {
 					Object value = field.get(instance);
@@ -140,16 +150,27 @@ public class ConfigurationReader {
 						throw new IllegalArgumentException("Property " + propertyName + " for class " + configClass + " is not set!");
 				} else {
 
+					if (!CLASS_MAPPERS.containsKey(type))
+						throw new IllegalArgumentException( //
+								String.format("Field %s in class %s has an unsupported type %s. Supported Types are: %s", //
+										field.getName(), //
+										configClass.getSimpleName(), //
+										type.getSimpleName(), //
+										accumulateSupportedTypes()));
+
+					Object value = null;
+
 					try {
-						field.set(instance, CLASS_MAPPERS.get(type).apply(property));
+						value = CLASS_MAPPERS.get(type).apply(property);
 					} catch (Exception e) {
 						e.printStackTrace();
 						throw new IllegalStateException("Unable to map property " + propertyName + " with value '" + property + "' to " + type.getSimpleName(), e);
 					}
+
+					field.set(instance, value);
 				}
 
 			} catch (IllegalAccessException e) {
-				System.out.println("Can not instanciate config class: " + e.getMessage());
 				e.printStackTrace();
 				throw new IllegalArgumentException("Can not instantiate config class: " + field.getName() + " is not accessable!");
 			}
@@ -158,6 +179,197 @@ public class ConfigurationReader {
 		return instance;
 	}
 
+	private void checkField(Field field) {
+
+		String name = field.getName();
+		Class<?> declaringClass = field.getDeclaringClass();
+		int modifiers = field.getModifiers();
+
+		String baseError = String.format("Field %s in class %s ", name, declaringClass);
+
+		if (!Modifier.isPublic(modifiers))
+			throw new IllegalStateException(baseError + "must be public");
+
+		if (Modifier.isStatic(modifiers))
+			throw new IllegalStateException(baseError + "may not be static");
+
+		if (Modifier.isFinal(modifiers))
+			throw new IllegalStateException(baseError + "may not be final");
+
+	}
+
+	private Object read(Properties properties, Type configClass) {
+
+		try {
+			Class<?> clazz = Class.forName(configClass.getTypeName());
+			return read(properties, clazz);
+
+		} catch (ClassNotFoundException e) {
+			throw new IllegalArgumentException("Class of type " + configClass + " does not exist");
+		}
+	}
+
+	private void handleSet(Field field, Object instance, Properties properties) throws IllegalAccessException {
+
+		Set<Object> value = handleCollection(field, instance, properties).collect(Collectors.toSet());
+		field.set(instance, value);
+	}
+
+	private void handleList(Field field, Object instance, Properties properties) throws IllegalAccessException {
+
+		List<Object> value = handleCollection(field, instance, properties).collect(Collectors.toList());
+		field.set(instance, value);
+	}
+
+	private Stream<Object> handleCollection(Field field, Object instance, Properties properties) throws IllegalAccessException {
+
+		boolean required = isRequired(field);
+		String propertyName = ConfigurationUtil.getPropertyName(field);
+
+		ParameterizedType pt = (ParameterizedType) field.getGenericType();
+		Type[] actualTypeArguments = pt.getActualTypeArguments();
+
+		// type and class mapping for the generic type
+		Type keyType = actualTypeArguments[0];
+		Function<String, ?> classMapper = CLASS_MAPPERS.get(keyType);
+
+		String stringValue = properties.getProperty(propertyName);
+		if (required && field.get(instance) == null && stringValue == null)
+			throw new IllegalArgumentException("Property " + propertyName + " for class " + instance.getClass() + " is not set!");
+
+		return Arrays.asList(stringValue.split(",")).stream().map(s -> classMapper.apply(s));
+
+	}
+
+	private void handleMap(Field field, Object instance, Properties properties) throws IllegalAccessException {
+
+		Set<String> keys = properties.keySet().stream().map(k -> k.toString()).collect(Collectors.toSet());
+
+		boolean required = isRequired(field);
+		String propertyName = ConfigurationUtil.getPropertyName(field);
+
+		Set<String> matchingKeys = keys.stream().filter(k -> k.startsWith(propertyName + ".")).collect(Collectors.toSet());
+		if (matchingKeys.isEmpty() && required && field.get(instance) == null)
+			throw new IllegalArgumentException("Property " + propertyName + " for class " + instance.getClass() + " is not set!");
+
+		ParameterizedType pt = (ParameterizedType) field.getGenericType();
+		Type[] actualTypeArguments = pt.getActualTypeArguments();
+
+		// type and class mapping for the first generic type i.e. the key
+		Type keyType = actualTypeArguments[0];
+		Function<String, ?> keyMapper = CLASS_MAPPERS.get(keyType);
+
+		// type and class mapping for the second generic type i.e. the value
+		Type valueType = actualTypeArguments[1];
+		Function<String, ?> valueMapper = CLASS_MAPPERS.get(valueType);
+
+		if (keyMapper == null) {
+			throw new IllegalArgumentException( //
+					String.format("Field %s in class %s has an unsupported key type %s. Supported Types are: %s", //
+							field.getName(), //
+							instance.getClass().getSimpleName(), //
+							valueType.toString(), //
+							accumulateSupportedTypes()));
+		}
+
+		Map<Object, Object> map = new HashMap<>();
+
+		// if no class mapping for the value is present, assume a complex object
+		if (valueMapper == null) {
+
+			Map<String, Properties> subProperties = createSubProperties(propertyName, matchingKeys, properties);
+			Set<Entry<String, Properties>> entrySet = subProperties.entrySet();
+			for (Entry<String, Properties> entry : entrySet) {
+
+				Object key = keyMapper.apply(entry.getKey());
+				Object value = read(entry.getValue(), valueType);
+
+				map.put(key, value);
+			}
+
+		} else {
+
+			for (String propertyKey : matchingKeys) {
+
+				String stringKey = extractRelativeKey(propertyName, propertyKey);
+				String stringValue = properties.getProperty(propertyKey);
+
+				Object key = keyMapper.apply(stringKey);
+				Object value = valueMapper.apply(stringValue);
+
+				map.put(key, value);
+			}
+		}
+
+		field.set(instance, map);
+	}
+
+	private Map<String, Properties> createSubProperties(String propertyName, Set<String> keys, Properties properties) {
+
+		Map<String, List<String>> propertyParts = new HashMap<>();
+
+		for (String propertyKey : keys) {
+
+			String key = extractRelativeKey(propertyName, propertyKey);
+			if (key == null || key.isEmpty())
+				throw new IllegalArgumentException("Map " + propertyName + " needs a key");
+
+			String[] split = key.split("\\.");
+
+			List<String> parts = propertyParts.getOrDefault(split[0], new ArrayList<>());
+
+			if (split.length > 1) {
+				parts.add(split[1]);
+			}
+
+			propertyParts.putIfAbsent(split[0], parts);
+		}
+
+		Map<String, Properties> propertyList = new HashMap<>();
+
+		for (Entry<String, List<String>> entry : propertyParts.entrySet()) {
+
+			String subKey = entry.getKey();
+			Properties subProperties = new Properties();
+
+			for (String subSubKey : entry.getValue()) {
+				subProperties.setProperty(subSubKey, properties.getProperty(propertyName + "." + subKey + "." + subSubKey));
+			}
+
+			propertyList.put(subKey, subProperties);
+		}
+
+		return propertyList;
+	}
+
+	private List<String> accumulateSupportedTypes() {
+
+		Set<Type> types = new HashSet<>(CLASS_MAPPERS.keySet());
+		types.add(Map.class);
+		types.add(List.class);
+		types.add(Set.class);
+
+		return types.stream().map(t -> t.toString()).sorted().collect(Collectors.toList());
+	}
+
+	/**
+	 * Extracts the relative path e.g. for parsing {@link Map} from properties.
+	 * 
+	 * @param prefix      the prefix, that is ignored
+	 * @param propertyKey the full name of the property
+	 * @return the relative key
+	 */
+	private String extractRelativeKey(String prefix, String propertyKey) {
+		return propertyKey.substring(prefix.length() + 1);
+	}
+
+	/**
+	 * Checks if the given field is necessary to set with a value from the properties.
+	 * 
+	 * @param field the field to check
+	 * @see ConfigurationProperty#required()
+	 * @return true, if the field must have a value, false else
+	 */
 	private boolean isRequired(Field field) {
 
 		ConfigurationProperty annotation = field.getAnnotation(ConfigurationProperty.class);
@@ -168,6 +380,15 @@ public class ConfigurationReader {
 
 	}
 
+	/**
+	 * Creates a new instance of given class.
+	 * 
+	 * @param       <M> the type of the given class
+	 * @param clazz the given class to instantiate
+	 * @return the new instance
+	 * @throws IllegalArgumentException If the given class can not be instantiated, e.g. has no default
+	 *                                  constructor
+	 */
 	private <M> M getInstance(Class<M> clazz) {
 
 		try {
@@ -175,7 +396,7 @@ public class ConfigurationReader {
 
 		} catch (InstantiationException | IllegalAccessException e) {
 			e.printStackTrace();
-			throw new IllegalArgumentException("Can not instantiate config class: " + clazz.getName());
+			throw new IllegalArgumentException("Can not instantiate config class: " + clazz.getName(), e);
 		}
 	}
 
