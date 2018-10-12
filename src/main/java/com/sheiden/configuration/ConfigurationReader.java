@@ -15,6 +15,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.function.Function;
@@ -211,17 +212,23 @@ public class ConfigurationReader {
 
 	private void handleSet(Field field, Object instance, Properties properties) throws IllegalAccessException {
 
-		Set<Object> value = handleCollection(field, instance, properties).collect(Collectors.toSet());
-		field.set(instance, value);
+		Optional<Stream<Object>> collection = handleCollection(field, instance, properties);
+
+		if (collection.isPresent()) {
+			field.set(instance, collection.get().collect(Collectors.toSet()));
+		}
 	}
 
 	private void handleList(Field field, Object instance, Properties properties) throws IllegalAccessException {
 
-		List<Object> value = handleCollection(field, instance, properties).collect(Collectors.toList());
-		field.set(instance, value);
+		Optional<Stream<Object>> collection = handleCollection(field, instance, properties);
+
+		if (collection.isPresent()) {
+			field.set(instance, collection.get().collect(Collectors.toList()));
+		}
 	}
 
-	private Stream<Object> handleCollection(Field field, Object instance, Properties properties) throws IllegalAccessException {
+	private Optional<Stream<Object>> handleCollection(Field field, Object instance, Properties properties) throws IllegalAccessException {
 
 		boolean required = isRequired(field);
 		String propertyName = ConfigurationUtil.getPropertyName(field);
@@ -237,7 +244,15 @@ public class ConfigurationReader {
 		if (required && field.get(instance) == null && stringValue == null)
 			throw new IllegalArgumentException("Property " + propertyName + " for class " + instance.getClass() + " is not set!");
 
-		return Arrays.asList(stringValue.split(",")).stream().map(s -> classMapper.apply(s));
+		if (stringValue == null) {
+			if (field.get(instance) == null)
+				return Optional.of(Stream.empty());
+			else
+				return Optional.empty();
+		}
+
+		Stream<Object> stream = Arrays.asList(stringValue.split(",")).stream().map(s -> classMapper.apply(s));
+		return Optional.of(stream);
 
 	}
 
