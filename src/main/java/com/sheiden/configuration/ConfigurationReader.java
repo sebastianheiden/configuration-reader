@@ -164,7 +164,6 @@ public class ConfigurationReader {
 					try {
 						value = CLASS_MAPPERS.get(type).apply(property);
 					} catch (Exception e) {
-						e.printStackTrace();
 						throw new IllegalStateException("Unable to map property " + propertyName + " with value '" + property + "' to " + type.getSimpleName(), e);
 					}
 
@@ -172,7 +171,6 @@ public class ConfigurationReader {
 				}
 
 			} catch (IllegalAccessException e) {
-				e.printStackTrace();
 				throw new IllegalArgumentException("Can not instantiate config class: " + field.getName() + " is not accessable!");
 			}
 		}
@@ -180,6 +178,27 @@ public class ConfigurationReader {
 		return instance;
 	}
 
+	/**
+	 * Abstraction method for {@link #read(Properties, Class)}, that encapsulates {@link Type} instead
+	 * of {@link Class}.
+	 */
+	private Object read(Properties properties, Type configClass) {
+
+		try {
+			Class<?> clazz = Class.forName(configClass.getTypeName());
+			return read(properties, clazz);
+
+		} catch (ClassNotFoundException e) {
+			throw new IllegalArgumentException("Class of type " + configClass + " does not exist");
+		}
+	}
+
+	/**
+	 * Checks if given field is public, non static and non final.
+	 * 
+	 * @param field the field to check
+	 * @throws IllegalStateException If the given field violates any restriction
+	 */
 	private void checkField(Field field) {
 
 		String name = field.getName();
@@ -199,17 +218,18 @@ public class ConfigurationReader {
 
 	}
 
-	private Object read(Properties properties, Type configClass) {
-
-		try {
-			Class<?> clazz = Class.forName(configClass.getTypeName());
-			return read(properties, clazz);
-
-		} catch (ClassNotFoundException e) {
-			throw new IllegalArgumentException("Class of type " + configClass + " does not exist");
-		}
-	}
-
+	/**
+	 * Reads the regarding value of given <tt>field</tt> from given <tt>properties</tt>, maps it to type
+	 * {@link Set} and injects the mapped value to the field of <tt>instance</tt>. If no matching
+	 * property is present either the default value is used, or an empty set is injected.
+	 * 
+	 * @param field      the field, in which the value is injected
+	 * @param instance   the owner of the field
+	 * @param properties the properties to read values from
+	 * @throws IllegalAccessException   If the given field is not accessible
+	 * @throws IllegalArgumentException If no class mapping is available for the generic type or no
+	 *                                  property and no default value is present
+	 */
 	private void handleSet(Field field, Object instance, Properties properties) throws IllegalAccessException {
 
 		Optional<Stream<Object>> collection = handleCollection(field, instance, properties);
@@ -219,6 +239,18 @@ public class ConfigurationReader {
 		}
 	}
 
+	/**
+	 * Reads the regarding value of given <tt>field</tt> from given <tt>properties</tt>, maps it to type
+	 * {@link List} and injects the mapped value to the field of <tt>instance</tt>. If no matching
+	 * property is present either the default value is used, or an empty list is injected.
+	 * 
+	 * @param field      the field, in which the value is injected
+	 * @param instance   the owner of the field
+	 * @param properties the properties to read values from
+	 * @throws IllegalAccessException   If the given field is not accessible
+	 * @throws IllegalArgumentException If no class mapping is available for the generic type or no
+	 *                                  property and no default value is present
+	 */
 	private void handleList(Field field, Object instance, Properties properties) throws IllegalAccessException {
 
 		Optional<Stream<Object>> collection = handleCollection(field, instance, properties);
@@ -228,6 +260,29 @@ public class ConfigurationReader {
 		}
 	}
 
+	/**
+	 * Reads the regarding property of given <tt>field</tt> from given <tt>properties</tt>, maps it's
+	 * generic type and turns the resulting elements into an optional {@link Stream}.
+	 * 
+	 * <p>
+	 * The returned {@link Optional} will only be empty if no matching property is set, but the value of
+	 * the given field is <b>not</b> <tt>null</tt>. In this case the default value of the field should
+	 * be used.
+	 * </p>
+	 * 
+	 * <p>
+	 * If no matching property is present and the value of the given field is <tt>null</tt> an empty
+	 * stream is returned.
+	 * </p>
+	 * 
+	 * @param field      the field, for which the value is extracted
+	 * @param instance   the owner of the field
+	 * @param properties the properties to read values from
+	 * @return an optional stream, which can be transfered further more to match the final form
+	 * @throws IllegalAccessException   If the given field is not accessible
+	 * @throws IllegalArgumentException If no class mapping is available for the generic type or no
+	 *                                  property and no default value is present
+	 */
 	private Optional<Stream<Object>> handleCollection(Field field, Object instance, Properties properties) throws IllegalAccessException {
 
 		boolean required = isRequired(field);
@@ -239,6 +294,13 @@ public class ConfigurationReader {
 		// type and class mapping for the generic type
 		Type keyType = actualTypeArguments[0];
 		Function<String, ?> classMapper = CLASS_MAPPERS.get(keyType);
+		if (classMapper == null)
+			throw new IllegalArgumentException( //
+					String.format("Field %s in class %s has an unsupported generic type %s. Supported Types are: %s", //
+							field.getName(), //
+							instance.getClass().getSimpleName(), //
+							keyType, //
+							accumulateSupportedTypes()));
 
 		String stringValue = properties.getProperty(propertyName);
 		if (required && field.get(instance) == null && stringValue == null)
@@ -280,7 +342,7 @@ public class ConfigurationReader {
 
 		if (keyMapper == null) {
 			throw new IllegalArgumentException( //
-					String.format("Field %s in class %s has an unsupported key type %s. Supported Types are: %s", //
+					String.format("Field %s in class %s has an unsupported generic key type %s. Supported Types are: %s", //
 							field.getName(), //
 							instance.getClass().getSimpleName(), //
 							valueType.toString(), //
@@ -297,9 +359,21 @@ public class ConfigurationReader {
 			for (Entry<String, Properties> entry : entrySet) {
 
 				Object key = keyMapper.apply(entry.getKey());
-				Object value = read(entry.getValue(), valueType);
 
-				map.put(key, value);
+				try {
+					Object value = read(entry.getValue(), valueType);
+
+					map.put(key, value);
+				} catch (IllegalArgumentException e) {
+					throw new IllegalArgumentException( //
+							String.format(
+									"Field %s in class %s has an unsupported generic value type %s. Either choose an supported type, add a class mapping for your class, or use a class, that has a public default constructor. Supported Types are: %s", //
+									field.getName(), //
+									instance.getClass().getSimpleName(), //
+									valueType.toString(), //
+									accumulateSupportedTypes()),
+							e);
+				}
 			}
 
 		} else {
@@ -357,6 +431,9 @@ public class ConfigurationReader {
 		return propertyList;
 	}
 
+	/**
+	 * @return a list of all supported types, represented as Strings
+	 */
 	private List<String> accumulateSupportedTypes() {
 
 		Set<Type> types = new HashSet<>(CLASS_MAPPERS.keySet());
@@ -410,7 +487,6 @@ public class ConfigurationReader {
 			return clazz.newInstance();
 
 		} catch (InstantiationException | IllegalAccessException e) {
-			e.printStackTrace();
 			throw new IllegalArgumentException("Can not instantiate config class: " + clazz.getName(), e);
 		}
 	}
@@ -431,8 +507,7 @@ public class ConfigurationReader {
 		try {
 			System.out.println("Loading properties from: " + configFile.getCanonicalPath());
 		} catch (IOException e) {
-			System.out.println("Unable to determine properties file path");
-			e.printStackTrace();
+			System.out.println("Error: Unable to determine properties canconical file path: " + pathToPropertiesFile);
 		}
 
 		// Checks if file exists

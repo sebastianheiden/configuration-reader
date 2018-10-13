@@ -9,6 +9,7 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.Set;
 
 import org.junit.Test;
@@ -130,6 +131,60 @@ public class ConfigurationReaderTest {
 		assertNotNull(set);
 		assertEquals(4, set.size());
 		assertEquals(new HashSet<Integer>(Arrays.asList(1, 2, 3, 4)), set);
+
+		assertEquals(collections.defaultList, new CollectionConfiguration().defaultList);
+	}
+
+	@Test(expected = IllegalArgumentException.class)
+	public void testMissingClassMappingsInCollectionsMap1() {
+
+		Properties properties = new Properties();
+		properties.setProperty("map.a", "1");
+
+		new ConfigurationReader().read(properties, MyMapConfiguration1.class);
+	}
+
+	@Test(expected = IllegalArgumentException.class)
+	public void testMissingClassMappingsInCollectionsMap2() {
+
+		Properties properties = new Properties();
+		properties.setProperty("map.1", "a");
+
+		new ConfigurationReader().read(properties, MyMapConfiguration2.class);
+	}
+
+	@Test(expected = IllegalArgumentException.class)
+	public void testMissingClassMappingsInCollectionsList() {
+
+		Properties properties = new Properties();
+		properties.setProperty("list", "1");
+
+		new ConfigurationReader().read(properties, MyListConfiguration1.class);
+	}
+
+	@Test(expected = IllegalArgumentException.class)
+	public void testMissingClassMappingsInCollectionsSet() {
+
+		Properties properties = new Properties();
+		properties.setProperty("set", "1");
+
+		new ConfigurationReader().read(properties, MySetConfiguration1.class);
+	}
+
+	public static class MyMapConfiguration1 {
+		public Map<String, BigDecimal> map;
+	}
+
+	public static class MyMapConfiguration2 {
+		public Map<BigDecimal, String> map;
+	}
+
+	public static class MyListConfiguration1 {
+		public List<BigDecimal> list;
+	}
+
+	public static class MySetConfiguration1 {
+		public Set<BigDecimal> set;
 	}
 
 }

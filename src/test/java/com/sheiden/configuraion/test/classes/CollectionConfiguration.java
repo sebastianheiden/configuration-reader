@@ -1,5 +1,6 @@
 package com.sheiden.configuraion.test.classes;
 
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -17,5 +18,7 @@ public class CollectionConfiguration {
 	public List<String> list;
 
 	public Set<Integer> set;
+
+	public List<String> defaultList = Arrays.asList("a", "b");
 
 }

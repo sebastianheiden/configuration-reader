@@ -102,8 +102,6 @@ public class ConfigurationWriterTest {
 		Properties properties = new Properties();
 		ConfigurationWriter.getInstance().write(properties, collections);
 
-		System.out.println(properties);
-
 		CollectionConfiguration collections2 = ConfigurationReader.getInstance().read(properties, CollectionConfiguration.class);
 
 		assertEquals(collections.list, collections2.list);
